@@ -1,0 +1,22 @@
+[package]
+name = "api-graphql"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+scheduler-domain = { path = "../../scheduler-domain" }
+# Pinned to 7.0.x deliberately: async-graphql 7.2 raises its MSRV to 1.89.0 and
+# this workspace pins the toolchain to 1.88.0. Bumping this means bumping the
+# toolchain pin, which is a project-wide decision, not a dependency bump.
+async-graphql = { version = "=7.0.17", features = ["dataloader"] }
+async-graphql-axum = "=7.0.17"
+axum = { workspace = true }
+time = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+scheduler-application = { path = "../../scheduler-application", features = ["testing"] }
+tokio = { workspace = true }

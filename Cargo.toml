@@ -1,0 +1,50 @@
+[workspace]
+resolver = "3"
+# NOTE: Cargo cannot glob both a parent dir and a grouping dir inside it —
+# "crates/*" would match the non-package "crates/adapters" dir and error, and
+# exclude = ["crates/adapters"] silently drops the adapter crates beneath it.
+# So core crates are listed explicitly; adapters are globbed.
+members = [
+    "crates/scheduler-domain",
+    "crates/scheduler-application",
+    "crates/adapters/*",
+    "crates/bin/*",
+    "crates/test-support",
+    "crates/e2e",
+    "crates/bench",
+]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.88.0"
+license = "MIT"
+version = "0.1.0"
+
+[workspace.dependencies]
+tokio = { version = "1", features = ["full"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "uuid", "time", "macros"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+# `serde-well-known` (not plain `serde`) is what provides `time::serde::rfc3339`,
+# used by the NATS wire format. Plain `serde` only gives the crate's own opaque
+# encoding, which is not a stable interchange format.
+time = { version = "0.3", features = ["serde-well-known", "macros"] }
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+async-nats = "0.49"
+futures = "0.3"
+axum = "0.8"
+tower = "0.5"
+http-body-util = "0.1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = "1"
+testcontainers = "0.23"
+testcontainers-modules = { version = "0.11", features = ["postgres", "redis"] }
+redis = { version = "0.27", features = ["tokio-comp", "connection-manager"] }
+# OpenTelemetry: the tracing bridge + SDK + an OTLP exporter over HTTP (not
+# grpc-tonic, to avoid a second tonic version alongside api-grpc's 0.14).
+opentelemetry = "0.27"
+opentelemetry_sdk = { version = "0.27", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.27", default-features = false, features = ["trace", "http-proto", "reqwest-blocking-client"] }
+tracing-opentelemetry = "0.28"

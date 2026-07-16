@@ -1,0 +1,18 @@
+[package]
+name = "adapter-postgres"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+scheduler-domain = { path = "../../scheduler-domain" }
+sqlx = { workspace = true }
+uuid = { workspace = true }
+time = { workspace = true }
+
+[dev-dependencies]
+test-support = { path = "../../test-support" }
+tokio = { workspace = true }
+testcontainers = { workspace = true }
+testcontainers-modules = { workspace = true }
+scheduler-application = { path = "../../scheduler-application", features = ["testing"] }

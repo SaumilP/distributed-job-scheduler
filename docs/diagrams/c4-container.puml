@@ -1,0 +1,47 @@
+@startuml c4-container
+' C4 level 2 -- containers.
+' The three deployable roles, the two stores they share, and the one optional
+' store wired into nothing by default. Short labels on purpose; the reasoning
+' lives in ARCHITECTURE.md beside the image.
+!include lib/C4_Container.puml
+
+LAYOUT_TOP_DOWN()
+title Containers — three roles over one Postgres and one NATS
+
+AddRelTag("absent", $lineStyle = DashedLine(), $textColor = "#7f8c8d", $lineColor = "#7f8c8d")
+AddElementTag("optional", $bgColor = "#8fa5b3", $borderColor = "#6b8291", $fontColor = "#ffffff")
+
+Person(client, "API client")
+
+System_Boundary(sys, "Distributed job scheduler") {
+  Container(api, "scheduler-api", "Rust · axum + async-graphql + tonic", "Serves all three surfaces. Owns migrations. Does no scheduling.")
+  Container(engine, "scheduler-engine", "Rust · tokio", "Materialize, claim/dispatch, reap. Scales out — SKIP LOCKED keeps replicas disjoint.")
+  Container(worker, "scheduler-worker", "Rust · tokio", "Execute, complete, ack — in that order. Scales out on one queue group.")
+
+  ContainerDb(pg, "Postgres", "17", "jobs + job_runs, partitioned by day. The only source of truth.")
+  ContainerQueue(nats, "NATS JetStream", "2.x", "RUNS stream, durable pull consumer, explicit ack.")
+  ContainerDb(redis, "Redis", "7 · optional", "Due-index hint. Measured slower than the scan; wired in by nothing.", $tags = "optional")
+}
+
+System_Ext(prometheus, "Prometheus")
+System_Ext(otel, "OTLP collector")
+
+Rel_D(client, api, "Creates jobs, reads runs", "REST/GraphQL · gRPC")
+Rel_D(api, pg, "Jobs, runs by id, batched runs", "SQL")
+Rel_D(engine, pg, "Materialize, claim, release, reclaim", "SQL")
+Rel_D(engine, nats, "Publishes claimed runs + traceparent", "NATS")
+Rel_D(nats, worker, "Delivers runs", "explicit ack")
+Rel_D(worker, pg, "Reads state, records outcome", "SQL")
+Rel_R(engine, redis, "pop_due → claim_ids", "RESP", $tags = "absent")
+
+Rel_U(prometheus, engine, "Scrapes", ":9090")
+Rel_U(prometheus, worker, "Scrapes", ":9090")
+Rel_U(otel, engine, "Spans", "OTLP/HTTP")
+Rel_U(otel, worker, "Spans", "OTLP/HTTP")
+
+Lay_R(api, engine)
+Lay_R(engine, worker)
+Lay_R(prometheus, otel)
+
+SHOW_LEGEND()
+@enduml

@@ -1,0 +1,45 @@
+@startuml c4-component-engine
+' C4 level 3 -- inside scheduler-engine.
+' Three independent loops, and the two mechanisms that hand back a claim nobody
+' published. Read beside "the dual write at claim-then-publish" in
+' ARCHITECTURE.md, which carries the argument these boxes only name.
+!include lib/C4_Component.puml
+
+LAYOUT_TOP_DOWN()
+title Components — inside scheduler-engine: three loops, two recovery paths
+
+AddElementTag("recovery", $bgColor = "#b8860b", $borderColor = "#8f6a09", $fontColor = "#ffffff")
+AddRelTag("recover", $textColor = "#8f6a09", $lineColor = "#8f6a09")
+
+Container_Boundary(engine, "scheduler-engine") {
+  Component(mat, "materialize_tick", "loop · POLL_INTERVAL_MS", "Proposes the horizon; ON CONFLICT absorbs repeats")
+  Component(claim, "claim/dispatch tick", "loop · POLL_INTERVAL_MS", "Claim BATCH_SIZE, publish each, release failures")
+  Component(inflight, "InFlight", "shared registry", "Holds the batch from claim until published")
+  Component(reaper, "reaper_tick", "loop · 30s", "Expired leases → Pending. The crash backstop.", $tags = "recovery")
+  Component(drain, "drain_leases", "SIGTERM · 5s budget", "Releases what InFlight still holds, before exit.", $tags = "recovery")
+  Component(metrics, "serve_metrics", "axum admin listener", "GET /metrics on METRICS_ADDR only")
+}
+
+ContainerDb(pg, "Postgres", "17", "job_runs")
+ContainerQueue(nats, "NATS JetStream", "2.x", "RUNS stream")
+System_Ext(prom, "Prometheus")
+
+Rel_D(mat, pg, "list_active, insert_runs", "SQL")
+Rel_D(claim, pg, "claim_due — committed before any publish", "SQL")
+Rel_D(claim, nats, "publish_run, one round trip per run")
+Rel_R(claim, inflight, "add on claim, remove on publish")
+Rel_D(drain, pg, "release → Pending", "SQL", $tags = "recover")
+Rel_D(reaper, pg, "reclaim_expired → Pending", "SQL", $tags = "recover")
+Rel_L(drain, inflight, "snapshot")
+Rel_U(prom, metrics, "Scrapes", ":9090")
+
+' drain sits beside InFlight deliberately: it reads the registry, and an edge
+' arcing over the whole diagram to reach it reads as an afterthought.
+Lay_R(mat, claim)
+Lay_R(claim, inflight)
+Lay_R(inflight, drain)
+Lay_R(drain, reaper)
+Lay_R(pg, nats)
+
+SHOW_LEGEND()
+@enduml

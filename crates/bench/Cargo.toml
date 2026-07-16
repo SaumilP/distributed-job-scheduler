@@ -1,0 +1,29 @@
+[package]
+name = "bench"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+# A measurement tool, not a shipped artifact. It drives the real adapters
+# against throwaway containers and prints numbers; nothing depends on it.
+publish = false
+
+[dependencies]
+scheduler-domain = { path = "../scheduler-domain" }
+# `testing` for FixedClock and NoopMetrics — the same utilities the engine and
+# worker binaries pull in from here; not test-only despite the module name.
+scheduler-application = { path = "../scheduler-application", features = ["testing"] }
+adapter-postgres = { path = "../adapters/adapter-postgres" }
+adapter-nats = { path = "../adapters/adapter-nats" }
+adapter-metrics = { path = "../adapters/adapter-metrics" }
+adapter-redis = { path = "../adapters/adapter-redis" }
+redis = { workspace = true }
+# Reuses the container fixture the test suite already uses, so the bench and the
+# tests stand up Postgres and NATS the same way. It is throwaway scaffolding in
+# both -- see its own note about containers outliving the process.
+test-support = { path = "../test-support" }
+anyhow = { workspace = true }
+async-nats = { workspace = true }
+sqlx = { workspace = true }
+time = { workspace = true }
+tokio = { workspace = true }
+uuid = { workspace = true }

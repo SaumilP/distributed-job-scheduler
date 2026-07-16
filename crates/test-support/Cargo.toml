@@ -1,0 +1,14 @@
+[package]
+name = "test-support"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+# Test scaffolding only. Not published, and nothing in the production
+# dependency graph may depend on it.
+publish = false
+
+[dependencies]
+sqlx = { workspace = true }
+testcontainers = { workspace = true }
+testcontainers-modules = { workspace = true }
+tokio = { workspace = true }

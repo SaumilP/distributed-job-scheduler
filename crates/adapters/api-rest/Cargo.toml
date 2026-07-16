@@ -1,0 +1,22 @@
+[package]
+name = "api-rest"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+adapter-postgres = { path = "../adapter-postgres" }
+scheduler-domain = { path = "../../scheduler-domain" }
+axum = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+time = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+test-support = { path = "../../test-support" }
+http-body-util = { workspace = true }
+tokio = { workspace = true }
+tower = { workspace = true, features = ["util"] }

@@ -1,0 +1,148 @@
+# Local demo stack. Throwaway credentials only -- see deploy/README.md.
+name: distributed-job-scheduler
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: scheduler
+    # Not published. The demo needs only the API's port on the host, and
+    # binding 5432 collides with any Postgres a developer already runs -- which
+    # it did, the first time this was started. Uncomment to inspect the
+    # database directly, ideally on a non-default host port:
+    #   ports: ["55432:5432"]
+    healthcheck:
+      # The app services wait on this. Without it they race Postgres to
+      # readiness and crash-loop on first start, which reads as "the demo is
+      # broken" rather than "the database was not up yet".
+      test: ["CMD-SHELL", "pg_isready -U postgres -d scheduler"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  nats:
+    image: nats:2-alpine
+    # JetStream is NOT on by default. Without -js, stream creation fails with
+    # "jetstream not enabled for account".
+    command: ["-js", "-m", "8222"]
+    # Not published, for the same reason as Postgres above.
+    #   ports: ["54222:4222"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:8222/healthz || exit 1"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    command: ["scheduler-api"]
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/scheduler
+      NATS_URL: nats://nats:4222
+      # Both bind 0.0.0.0, not 127.0.0.1. A loopback bind inside a container
+      # serves nothing through a published port -- the mapping succeeds and
+      # every connection is refused, which reads as "the server is down".
+      HTTP_ADDR: 0.0.0.0:8080
+      GRPC_ADDR: 0.0.0.0:50051
+      # Prometheus admin listener. Each role binds 9090 inside its own
+      # container; the host mapping below is what keeps them distinct.
+      METRICS_ADDR: 0.0.0.0:9090
+      RUST_LOG: info
+    ports:
+      # REST and GraphQL (GraphQL at /graphql, playground on GET).
+      - "8080:8080"
+      # gRPC. A separate listener rather than a route on 8080: tonic needs
+      # HTTP/2 with its own service stack, which axum's router does not
+      # provide. Published because it is a client-facing surface -- unlike
+      # Postgres and NATS below, nothing on a developer's machine conventionally
+      # owns 50051.
+      - "50051:50051"
+      # Prometheus /metrics. Published for the demo so a local Prometheus or a
+      # `curl localhost:9090/metrics` can reach it -- but note it is an
+      # UNAUTHENTICATED admin surface that discloses tenant counts and traffic
+      # shape. In a real deployment it belongs on an internal network or behind
+      # auth, scraped in-cluster, not mapped to a host port. The API's own
+      # registry is empty (it does no scheduling); the interesting numbers are
+      # on the engine and worker below.
+      - "9090:9090"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    # No healthcheck: the runtime image has no HTTP client, and a check that
+    # always passes is worse than none -- it makes `depends_on: service_healthy`
+    # look like a guarantee while asserting nothing.
+    restart: on-failure
+
+  engine:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    command: ["scheduler-engine"]
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/scheduler
+      NATS_URL: nats://nats:4222
+      # Each replica needs a distinct owner or lease attribution is
+      # meaningless. If you scale this service, remove this line and let it
+      # fall back to the container hostname, which Docker makes unique.
+      SCHEDULER_OWNER: engine-1
+      POLL_INTERVAL_MS: "1000"
+      HORIZON_SECS: "60"
+      BATCH_SIZE: "100"
+      # Per-tenant fairness cap: at most this many of any one tenant's runs per
+      # claim batch, so a noisy tenant cannot starve others. 0 (the default) is
+      # off. Set a positive value to bound one tenant's share of BATCH_SIZE.
+      PER_TENANT_CAP: "0"
+      METRICS_ADDR: 0.0.0.0:9090
+      RUST_LOG: info
+    ports:
+      # The engine's Prometheus /metrics -- where claim throughput, due-lag,
+      # reclaim rate and burial rate actually live. Distinct host port; 9090
+      # inside the container. Same admin-surface caveat as the API's above.
+      - "9091:9090"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      api:
+        condition: service_started
+    # The API owns migrations, so the engine's first queries can fail while the
+    # schema is still landing. Its loops swallow tick errors by design, but a
+    # failure during *startup* wiring (before the loops begin) exits, so a
+    # restart is the honest recovery.
+    restart: on-failure
+
+  worker:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    command: ["scheduler-worker"]
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/scheduler
+      NATS_URL: nats://nats:4222
+      METRICS_ADDR: 0.0.0.0:9090
+      RUST_LOG: info
+    ports:
+      # The worker's Prometheus /metrics -- carries execution_seconds, the
+      # histogram only it can report. Same admin-surface caveat as above.
+      - "9092:9090"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      # The engine creates the RUNS stream, and the worker's consumer bind
+      # fails without it.
+      engine:
+        condition: service_started
+    # The worker binds its consumer at startup and exits if the RUNS stream is
+    # not there yet, which races the engine that creates it. Restart-on-failure
+    # is the simple, visible fix; a retry loop inside the binary would hide the
+    # ordering dependency rather than express it.
+    restart: on-failure

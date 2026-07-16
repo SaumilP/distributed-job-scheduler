@@ -1,0 +1,60 @@
+@startuml c4-component-hexagon
+' C4 level 3 -- the ports-and-adapters view of the whole workspace.
+' Every arrow points inward. That direction is the entire architectural claim,
+' and `cargo tree -p scheduler-domain --edges normal` is how you check it.
+!include lib/C4_Component.puml
+
+LAYOUT_TOP_DOWN()
+title Components — ports and adapters, every dependency pointing inward
+
+AddElementTag("domain", $bgColor = "#0b4884", $borderColor = "#073b6f", $fontColor = "#ffffff")
+AddElementTag("app", $bgColor = "#1168bd", $borderColor = "#0b4884", $fontColor = "#ffffff")
+AddElementTag("optional", $bgColor = "#8fa5b3", $borderColor = "#6b8291", $fontColor = "#ffffff")
+AddRelTag("absent", $lineStyle = DashedLine(), $textColor = "#7f8c8d", $lineColor = "#7f8c8d")
+
+Container_Boundary(driving, "Driving adapters — they call in") {
+  Component(rest, "api-rest", "axum", "Jobs and runs by id, /health, /ready")
+  Component(gql, "api-graphql", "async-graphql", "One schema + DataLoader; complexity 256")
+  Component(grpc, "api-grpc", "tonic + protox", "scheduler.v1.Scheduler; no protoc")
+}
+
+Container_Boundary(core, "The hexagon — no infrastructure dependencies") {
+  Component(materialize, "MaterializeDueRuns<R, C>", "scheduler-application", "Proposes grid points inside the horizon", $tags = "app")
+  Component(dispatch, "ClaimAndDispatch<R, P, C>", "scheduler-application", "Claim, publish, release what failed", $tags = "app")
+  Component(model, "model", "scheduler-domain", "Job, JobRun, RunState, next_after, the constants", $tags = "domain")
+  Component(ports, "ports", "scheduler-domain", "RunRepository, JobRepository, EventPublisher, Clock, Metrics", $tags = "domain")
+}
+
+Container_Boundary(driven, "Driven adapters — the hexagon calls out") {
+  Component(pg, "adapter-postgres", "sqlx", "The SKIP LOCKED claim, partitions, migrations")
+  Component(natsad, "adapter-nats", "async-nats", "JetStream publish/consume, traceparent")
+  Component(metrics, "adapter-metrics", "std only", "Lock-free Prometheus registry")
+  Component(redis, "adapter-redis", "redis-rs", "Due-index hint. Built, measured, unwired.", $tags = "optional")
+}
+
+Rel_D(rest, model, "validates")
+Rel_D(grpc, model, "validates")
+Rel_D(gql, ports, "runs_for_jobs")
+Rel_D(rest, ports, "insert, get")
+Rel_D(grpc, ports, "insert, get")
+
+Rel_D(materialize, ports, "insert_runs")
+Rel_D(dispatch, ports, "claim_due, publish, release")
+Rel_D(materialize, model, "next_after")
+Rel_D(dispatch, model, "LEASE_SECS")
+
+Rel_U(pg, ports, "implements")
+Rel_U(natsad, ports, "implements")
+Rel_U(metrics, ports, "implements")
+Rel_U(redis, ports, "feeds claim_ids", $tags = "absent")
+
+Lay_R(rest, gql)
+Lay_R(gql, grpc)
+Lay_R(materialize, dispatch)
+Lay_R(model, ports)
+Lay_R(pg, natsad)
+Lay_R(natsad, metrics)
+Lay_R(metrics, redis)
+
+SHOW_LEGEND()
+@enduml

@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package scheduler.v1;
+
+// The same use cases REST and GraphQL expose. Kept deliberately small: this is
+// a reference implementation, and every RPC here has a counterpart on the
+// other two surfaces so the three can be compared.
+service Scheduler {
+  rpc CreateJob(CreateJobRequest) returns (CreateJobResponse);
+  rpc GetJob(GetJobRequest) returns (GetJobResponse);
+  rpc GetRun(GetRunRequest) returns (GetRunResponse);
+}
+
+message CreateJobRequest {
+  string tenant = 1;
+  string target = 2;
+  // Seconds. Bounded server-side -- see scheduler_domain::MAX_INTERVAL_SECS.
+  int64 every_secs = 3;
+}
+
+message CreateJobResponse {
+  string id = 1;
+}
+
+message GetJobRequest {
+  string id = 1;
+}
+
+message GetJobResponse {
+  Job job = 1;
+}
+
+message GetRunRequest {
+  string id = 1;
+}
+
+message GetRunResponse {
+  Run run = 1;
+}
+
+message Job {
+  string id = 1;
+  string tenant = 2;
+  string target = 3;
+  oneof schedule {
+    int64 every_secs = 4;
+    // RFC 3339. The same encoding the NATS wire format uses -- a second time
+    // encoding in one system is a second thing to get wrong.
+    string fire_at = 5;
+  }
+}
+
+message Run {
+  string id = 1;
+  string job_id = 2;
+  string state = 3;
+  int32 attempt = 4;
+  // RFC 3339, as above.
+  string scheduled_at = 5;
+}

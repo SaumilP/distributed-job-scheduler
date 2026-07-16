@@ -1,0 +1,27 @@
+[package]
+name = "adapter-nats"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+scheduler-domain = { path = "../../scheduler-domain" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+time = { workspace = true }
+uuid = { workspace = true }
+async-nats = { workspace = true }
+futures = { workspace = true }
+# Trace-context propagation across the message boundary: inject the current
+# span's W3C traceparent into the published headers, extract it on consume.
+tracing = { workspace = true }
+opentelemetry = { workspace = true }
+tracing-opentelemetry = { workspace = true }
+
+[dev-dependencies]
+# Only the propagation round-trip test sets a concrete propagator; the runtime
+# reads whatever the binary configured via the global.
+opentelemetry_sdk = { workspace = true }
+test-support = { path = "../../test-support" }
+tokio = { workspace = true }
+testcontainers = { workspace = true }

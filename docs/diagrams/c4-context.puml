@@ -1,0 +1,33 @@
+@startuml c4-context
+' C4 level 1 -- system context.
+' Who talks to the scheduler, and what it talks to. Descriptions are kept short
+' on purpose: the reasoning belongs in ARCHITECTURE.md next to the image, not
+' inside a box that has to stay legible at page width.
+!include lib/C4_Context.puml
+
+LAYOUT_TOP_DOWN()
+title System context — distributed job scheduler
+
+AddRelTag("absent", $lineStyle = DashedLine(), $textColor = "#7f8c8d", $lineColor = "#7f8c8d")
+
+Person(client, "API client", "Registers jobs, reads runs. No auth: the tenant is a trusted request field.")
+Person_Ext(operator, "Operator", "Scales the roles, watches the metrics, tunes the constants.")
+
+System(scheduler, "Distributed job scheduler", "Materializes runs from schedules, claims them without a coordinator, dispatches and records them. Same use cases over REST, GraphQL and gRPC.")
+
+System_Ext(prometheus, "Prometheus", "Scrapes each role's admin listener.")
+System_Ext(otel, "OTLP collector", "Optional. Receives spans when an endpoint is configured.")
+System_Ext(target, "Job target endpoint", "NOT BUILT. The worker logs instead of calling it.")
+
+Rel_D(client, scheduler, "Creates jobs, reads runs", "REST/GraphQL :8080 · gRPC :50051")
+Rel_D(operator, scheduler, "Deploys, scales, tunes", "kubectl / compose")
+Rel_D(scheduler, prometheus, "Exposes metrics", ":9090/metrics")
+Rel_D(scheduler, otel, "Exports spans", "OTLP/HTTP")
+Rel_D(scheduler, target, "Would invoke the run", "HTTP", $tags = "absent")
+
+Lay_R(client, operator)
+Lay_R(prometheus, otel)
+Lay_R(otel, target)
+
+SHOW_LEGEND()
+@enduml

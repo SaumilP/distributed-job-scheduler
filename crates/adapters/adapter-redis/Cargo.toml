@@ -1,0 +1,25 @@
+[package]
+name = "adapter-redis"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+scheduler-domain = { path = "../../scheduler-domain" }
+redis = { workspace = true }
+time = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+test-support = { path = "../../test-support" }
+tokio = { workspace = true }
+# For FLUSHDB between tests that share the one container. Same crate as the
+# runtime dep; declared here too so the integration test can reach it.
+redis = { workspace = true }
+uuid = { workspace = true }
+scheduler-domain = { path = "../../scheduler-domain" }
+# The hint-not-truth invariant test wires a real Postgres alongside Redis to
+# prove the index never overrides the database.
+adapter-postgres = { path = "../adapter-postgres" }
+sqlx = { workspace = true }
+time = { workspace = true }

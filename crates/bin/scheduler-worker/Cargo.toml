@@ -1,0 +1,23 @@
+[package]
+name = "scheduler-worker"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+adapter-metrics = { path = "../../adapters/adapter-metrics" }
+adapter-nats = { path = "../../adapters/adapter-nats" }
+adapter-postgres = { path = "../../adapters/adapter-postgres" }
+scheduler-common = { path = "../scheduler-common" }
+scheduler-domain = { path = "../../scheduler-domain" }
+anyhow = { workspace = true }
+async-nats = { workspace = true }
+sqlx = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-opentelemetry = { workspace = true }
+
+[dev-dependencies]
+scheduler-application = { path = "../../scheduler-application", features = ["testing"] }
+time = { workspace = true }
+uuid = { workspace = true }

@@ -1,0 +1,23 @@
+[package]
+name = "api-grpc"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+scheduler-domain = { path = "../../scheduler-domain" }
+time = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+prost = "0.14.4"
+tonic = "0.14.6"
+tonic-prost = "0.14.6"
+
+[build-dependencies]
+protox = "0.9.1"
+tonic-build = "0.14.6"
+tonic-prost-build = "0.14.6"
+
+[dev-dependencies]
+scheduler-application = { path = "../../scheduler-application", features = ["testing"] }
+tokio = { workspace = true }

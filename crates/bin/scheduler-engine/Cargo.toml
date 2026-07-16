@@ -1,0 +1,26 @@
+[package]
+name = "scheduler-engine"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+adapter-metrics = { path = "../../adapters/adapter-metrics" }
+adapter-nats = { path = "../../adapters/adapter-nats" }
+adapter-postgres = { path = "../../adapters/adapter-postgres" }
+scheduler-application = { path = "../../scheduler-application" }
+scheduler-common = { path = "../scheduler-common" }
+scheduler-domain = { path = "../../scheduler-domain" }
+anyhow = { workspace = true }
+async-nats = { workspace = true }
+futures = { workspace = true }
+sqlx = { workspace = true }
+time = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+# The `testing` feature is enabled only here, as a dev-dependency, so the
+# in-memory fakes never reach a production build of this binary.
+scheduler-application = { path = "../../scheduler-application", features = ["testing"] }
+uuid = { workspace = true }

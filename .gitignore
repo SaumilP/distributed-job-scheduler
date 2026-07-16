@@ -1,0 +1,10 @@
+/target
+.env
+# The pinned plantuml.jar that docs/diagrams/render.sh downloads on demand. The
+# rendered SVGs are committed, so nothing about reading the docs depends on it.
+/docs/diagrams/.cache
+.superpowers
+.claude
+.kiro
+# NOTE: do NOT ignore bin/ — it holds the scheduler-api / scheduler-engine /
+# scheduler-worker binary crates (source), not build output. Build output is /target.

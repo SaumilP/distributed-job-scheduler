@@ -1,0 +1,27 @@
+[package]
+name = "scheduler-common"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+scheduler-domain = { path = "../../scheduler-domain" }
+anyhow = { workspace = true }
+axum = { workspace = true }
+time = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+uuid = { workspace = true }
+opentelemetry = { workspace = true }
+opentelemetry_sdk = { workspace = true }
+opentelemetry-otlp = { workspace = true }
+tracing-opentelemetry = { workspace = true }
+
+[dev-dependencies]
+# For the /metrics endpoint test only: it drives the router with a real request
+# and asserts an incremented metric shows up in the response body. Not runtime
+# dependencies of this crate.
+adapter-metrics = { path = "../../adapters/adapter-metrics" }
+http-body-util = { workspace = true }
+tower = { workspace = true, features = ["util"] }

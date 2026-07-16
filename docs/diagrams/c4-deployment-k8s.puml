@@ -1,0 +1,62 @@
+@startuml c4-deployment-k8s
+' C4 deployment view -- deploy/k8s/.
+' Which roles scale, on what signal, and which nodes here are demo-grade.
+' The caveats are in deploy/k8s/README.md; these boxes only flag them.
+!include lib/C4_Deployment.puml
+
+LAYOUT_TOP_DOWN()
+title Deployment — deploy/k8s/, and what scales on which signal
+
+AddElementTag("demo", $bgColor = "#8fa5b3", $borderColor = "#6b8291", $fontColor = "#ffffff")
+AddRelTag("scale", $textColor = "#b8860b", $lineColor = "#b8860b", $lineStyle = DashedLine())
+
+Deployment_Node(cluster, "Kubernetes cluster", "any conformant cluster") {
+  Deployment_Node(ns, "namespace: scheduler", "scheduler.yaml") {
+
+    Deployment_Node(apinode, "Deployment scheduler-api", "replicas: 1") {
+      Container(api, "scheduler-api", "Rust", "Owns migrations, so it starts first")
+    }
+
+    Deployment_Node(engnode, "Deployment scheduler-engine", "replicas: 1..N") {
+      Container(engine, "scheduler-engine", "Rust", "HOSTNAME becomes the lease owner — replicas are distinct for free")
+    }
+
+    Deployment_Node(wrknode, "Deployment scheduler-worker", "replicas: 1..10") {
+      Container(worker, "scheduler-worker", "Rust", "One queue group; a new pod is a drop-in consumer")
+    }
+
+    Deployment_Node(pgnode, "Deployment postgres", "replicas: 1 · emptyDir", $tags = "demo") {
+      ContainerDb(pg, "Postgres 17", "demo only", "emptyDir — loses everything on restart", $tags = "demo")
+    }
+
+    Deployment_Node(natsnode, "Deployment nats", "replicas: 1 · emptyDir", $tags = "demo") {
+      ContainerQueue(nats, "NATS JetStream", "demo only", "Single node, memory-backed", $tags = "demo")
+    }
+  }
+
+  Deployment_Node(obs, "monitoring", "cluster-internal") {
+    Container(prom, "Prometheus", "", "Scrapes pods by annotation. Never on an Ingress.")
+    Container(hpa, "HPA", "autoscaling/v2", "Worker replicas on CPU")
+    Container(keda, "KEDA", "optional", "Engine replicas on due_lag_seconds p95")
+  }
+}
+
+Rel_D(api, pg, "SQL")
+Rel_D(engine, pg, "SQL")
+Rel_D(worker, pg, "SQL")
+Rel_D(engine, nats, "publish")
+Rel_D(nats, worker, "durable pull")
+Rel_U(prom, engine, "scrape :9090")
+Rel_U(prom, worker, "scrape :9090")
+Rel_L(keda, prom, "queries p95")
+Rel_L(keda, engnode, "scales", $tags = "scale")
+Rel_L(hpa, wrknode, "scales", $tags = "scale")
+
+Lay_R(apinode, engnode)
+Lay_R(engnode, wrknode)
+Lay_R(pgnode, natsnode)
+Lay_R(prom, hpa)
+Lay_R(hpa, keda)
+
+SHOW_LEGEND()
+@enduml

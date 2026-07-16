@@ -1,0 +1,24 @@
+[package]
+name = "scheduler-api"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+adapter-metrics = { path = "../../adapters/adapter-metrics" }
+adapter-postgres = { path = "../../adapters/adapter-postgres" }
+api-graphql = { path = "../../adapters/api-graphql" }
+api-grpc = { path = "../../adapters/api-grpc" }
+api-rest = { path = "../../adapters/api-rest" }
+scheduler-common = { path = "../scheduler-common" }
+scheduler-domain = { path = "../../scheduler-domain" }
+anyhow = { workspace = true }
+axum = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+time = { workspace = true }
+tokio = { workspace = true }
+tonic = "0.14.6"
+tracing = { workspace = true }
+uuid = { workspace = true }

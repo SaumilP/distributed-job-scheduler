@@ -1,0 +1,280 @@
+# Core Kubernetes manifests for the distributed job scheduler.
+#
+# Three roles (api, engine, worker) plus demo Postgres and NATS, all in one
+# namespace. Autoscaling is in autoscaling.yaml; the reasoning and prod caveats
+# are in this directory's README.
+#
+# The image is a placeholder: build deploy/Dockerfile, tag it
+# `distributed-job-scheduler:latest`, and load it into your cluster (kind load /
+# minikube image load) or push it to a registry and set imagePullPolicy: Always.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: scheduler
+---
+# Non-secret config shared by all three roles. Mirrors the compose environment.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: scheduler-config
+  namespace: scheduler
+data:
+  NATS_URL: "nats://nats:4222"
+  POLL_INTERVAL_MS: "1000"
+  HORIZON_SECS: "60"
+  BATCH_SIZE: "100"
+  # Per-tenant fairness cap; 0 is off. See ARCHITECTURE.md.
+  PER_TENANT_CAP: "0"
+  # Each role serves its own /metrics on this port; scraped via the pod
+  # annotations below.
+  METRICS_ADDR: "0.0.0.0:9090"
+  RUST_LOG: "info"
+---
+# Throwaway credential, as a Secret for shape only. A real deployment sources
+# DATABASE_URL from a managed-Postgres secret, never a committed literal.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: scheduler-db
+  namespace: scheduler
+type: Opaque
+stringData:
+  DATABASE_URL: "postgres://postgres:postgres@postgres:5432/scheduler"
+---
+# --- demo Postgres. Single replica, ephemeral. Production uses a managed
+# --- Postgres or an operator with real storage; this is emptyDir on purpose so
+# --- the manifests stand alone for a kind/minikube try-out.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: postgres }
+  template:
+    metadata:
+      labels: { app: postgres }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17-alpine
+          env:
+            - { name: POSTGRES_USER, value: postgres }
+            - { name: POSTGRES_PASSWORD, value: postgres }
+            - { name: POSTGRES_DB, value: scheduler }
+          ports:
+            - containerPort: 5432
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres", "-d", "scheduler"]
+            initialDelaySeconds: 3
+            periodSeconds: 2
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: scheduler
+spec:
+  selector: { app: postgres }
+  ports:
+    - { port: 5432, targetPort: 5432 }
+---
+# --- demo NATS with JetStream (-js). Same caveats as Postgres.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nats
+  namespace: scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: nats }
+  template:
+    metadata:
+      labels: { app: nats }
+    spec:
+      containers:
+        - name: nats
+          image: nats:2-alpine
+          args: ["-js", "-m", "8222"]
+          ports:
+            - { containerPort: 4222 }
+            - { containerPort: 8222 }
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8222 }
+            initialDelaySeconds: 2
+            periodSeconds: 2
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nats
+  namespace: scheduler
+spec:
+  selector: { app: nats }
+  ports:
+    - { port: 4222, targetPort: 4222 }
+---
+# --- API: REST + GraphQL (8080), gRPC (50051), admin /metrics (9090). Owns
+# --- migrations, so it starts first in practice; the engine/worker tolerate a
+# --- not-yet-migrated database by retrying their loops.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scheduler-api
+  namespace: scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: scheduler-api }
+  template:
+    metadata:
+      labels: { app: scheduler-api }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: scheduler-api
+          image: distributed-job-scheduler:latest
+          imagePullPolicy: IfNotPresent
+          command: ["scheduler-api"]
+          envFrom:
+            - configMapRef: { name: scheduler-config }
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef: { name: scheduler-db, key: DATABASE_URL }
+            - { name: HTTP_ADDR, value: "0.0.0.0:8080" }
+            - { name: GRPC_ADDR, value: "0.0.0.0:50051" }
+          ports:
+            - { name: http, containerPort: 8080 }
+            - { name: grpc, containerPort: 50051 }
+            - { name: metrics, containerPort: 9090 }
+          readinessProbe:
+            httpGet: { path: /metrics, port: metrics }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /metrics, port: metrics }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: "1", memory: 256Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: scheduler-api
+  namespace: scheduler
+spec:
+  selector: { app: scheduler-api }
+  ports:
+    - { name: http, port: 8080, targetPort: http }
+    - { name: grpc, port: 50051, targetPort: grpc }
+---
+# --- Engine: materialize + claim/dispatch + reaper. SCHEDULER_OWNER is left
+# --- unset on purpose: Config falls back to HOSTNAME, which Kubernetes sets to
+# --- the pod name — unique per replica, so scaling the engine gives each replica
+# --- a distinct lease owner with no extra configuration.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scheduler-engine
+  namespace: scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: scheduler-engine }
+  template:
+    metadata:
+      labels: { app: scheduler-engine }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      # A rollout should stop the old pod cleanly; the engine drains its
+      # unpublished claims on SIGTERM within DRAIN_BUDGET (5s), well inside this.
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: scheduler-engine
+          image: distributed-job-scheduler:latest
+          imagePullPolicy: IfNotPresent
+          command: ["scheduler-engine"]
+          envFrom:
+            - configMapRef: { name: scheduler-config }
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef: { name: scheduler-db, key: DATABASE_URL }
+          ports:
+            - { name: metrics, containerPort: 9090 }
+          readinessProbe:
+            httpGet: { path: /metrics, port: metrics }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /metrics, port: metrics }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 100m, memory: 64Mi }
+            limits: { cpu: "1", memory: 256Mi }
+---
+# --- Worker: consume, execute, complete, ack. Stateless and horizontally
+# --- scalable — replicas share one durable NATS consumer (a queue group), so a
+# --- run goes to exactly one of them. This is the natural HPA/KEDA target.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scheduler-worker
+  namespace: scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: scheduler-worker }
+  template:
+    metadata:
+      labels: { app: scheduler-worker }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: scheduler-worker
+          image: distributed-job-scheduler:latest
+          imagePullPolicy: IfNotPresent
+          command: ["scheduler-worker"]
+          envFrom:
+            - configMapRef: { name: scheduler-config }
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef: { name: scheduler-db, key: DATABASE_URL }
+          ports:
+            - { name: metrics, containerPort: 9090 }
+          readinessProbe:
+            httpGet: { path: /metrics, port: metrics }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /metrics, port: metrics }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 100m, memory: 64Mi }
+            limits: { cpu: "1", memory: 256Mi }

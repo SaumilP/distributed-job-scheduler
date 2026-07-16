@@ -1,0 +1,45 @@
+[package]
+name = "e2e"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+publish = false
+
+# No library and no binary: this crate exists only to host `tests/`. Keeping it
+# a separate member means the end-to-end test can depend on all three role
+# crates at once without any of them depending on each other.
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+
+[dev-dependencies]
+adapter-nats = { path = "../adapters/adapter-nats" }
+adapter-postgres = { path = "../adapters/adapter-postgres" }
+api-graphql = { path = "../adapters/api-graphql" }
+api-grpc = { path = "../adapters/api-grpc" }
+api-rest = { path = "../adapters/api-rest" }
+scheduler-application = { path = "../scheduler-application" }
+scheduler-common = { path = "../bin/scheduler-common" }
+scheduler-domain = { path = "../scheduler-domain" }
+scheduler-engine = { path = "../bin/scheduler-engine" }
+scheduler-worker = { path = "../bin/scheduler-worker" }
+test-support = { path = "../test-support" }
+async-nats = { workspace = true }
+axum = { workspace = true }
+http-body-util = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+time = { workspace = true }
+tokio = { workspace = true }
+# `net` for `TcpListenerStream`, which lets tonic serve a listener this test
+# already bound. Without it the port has to be bound, closed, and re-bound by
+# tonic, leaving a window for something else to take it.
+tokio-stream = { version = "0.1", features = ["net"] }
+# Pinned to the same version api-grpc uses. A client and server from different
+# tonic minor versions link two copies of the transport stack and fail at the
+# type level rather than at runtime, but the error is inscrutable; keeping the
+# versions equal keeps it from arising.
+tonic = "0.14.6"
+tower = { workspace = true, features = ["util"] }
+uuid = { workspace = true }

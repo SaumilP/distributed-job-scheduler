@@ -1,0 +1,23 @@
+[package]
+name = "scheduler-application"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+scheduler-domain = { path = "../scheduler-domain" }
+time = { workspace = true }
+uuid = { workspace = true }
+tokio = { workspace = true, optional = true }
+
+[features]
+testing = ["dep:tokio"]
+
+[dev-dependencies]
+# Declared twice deliberately: above, `tokio` is an OPTIONAL normal dependency
+# activated only by the `testing` feature, so other crates can reuse the fakes in
+# `testing.rs`. Here it is an unconditional dev-dependency because this crate's
+# own `#[tokio::test]`s must compile with the `testing` feature OFF. Keeping the
+# normal dependency optional is what preserves the hexagon rule: with the feature
+# off, `cargo tree -p scheduler-application --edges normal` shows no tokio.
+tokio = { workspace = true }

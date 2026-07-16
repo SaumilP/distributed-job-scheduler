@@ -1,0 +1,14 @@
+[package]
+name = "adapter-metrics"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+# No external dependencies, deliberately. `metrics-exporter-prometheus` was
+# evaluated and rejected: it pulls a second HTTP/TLS stack (hyper, hyper-rustls,
+# hyper-util) plus quanta alongside the one axum already uses, and its record
+# path does a keyed lookup per call — a contended map on the claim loop, which
+# the synchronous `Metrics` port exists to avoid. A std-only atomic registry
+# records with no allocation and no lock, and adds nothing to the MSRV surface.
+[dependencies]
+scheduler-domain = { path = "../../scheduler-domain" }

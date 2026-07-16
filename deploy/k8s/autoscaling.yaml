@@ -1,0 +1,86 @@
+# Autoscaling for the scheduler.
+#
+# Two flavours, deliberately not both pointed at the same Deployment (a plain
+# HPA and a KEDA ScaledObject on one target fight each other, since KEDA manages
+# its own HPA underneath):
+#
+#   - worker: a plain CPU HorizontalPodAutoscaler. Works with nothing but
+#     metrics-server, so it is the safe default. Workers share one durable NATS
+#     queue group, so adding replicas simply adds consumers.
+#   - engine: a KEDA ScaledObject driven by `due_lag_seconds` — the metric
+#     shipped in Phase 3b. When runs are being claimed late, the due queue is
+#     backing up faster than one dispatcher drains it, so more claimers (engine
+#     replicas, each a distinct lease owner via HOSTNAME) is the right response.
+#     `SKIP LOCKED` is what makes concurrent claimers safe.
+#
+# The engine block needs KEDA installed (keda.sh) and a Prometheus reachable at
+# the serverAddress. Without KEDA's CRDs, `kubectl apply` of that resource is
+# rejected — expected; install KEDA first, or omit it and scale the engine by
+# hand.
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: scheduler-worker
+  namespace: scheduler
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: scheduler-worker
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    # Scale up quickly under load, down slowly to avoid flapping a queue whose
+    # depth is spiky.
+    scaleDown:
+      stabilizationWindowSeconds: 120
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: scheduler-engine-duelag
+  namespace: scheduler
+spec:
+  scaleTargetRef:
+    name: scheduler-engine
+  minReplicaCount: 1
+  maxReplicaCount: 10
+  cooldownPeriod: 120
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.monitoring.svc:9090
+        # p95 due-lag over the last 2 minutes, in seconds. Scale up as runs get
+        # later; the threshold is the SLO you are willing to tolerate.
+        query: histogram_quantile(0.95, sum(rate(due_lag_seconds_bucket[2m])) by (le))
+        threshold: "30"
+---
+# Alternative worker scaler (apply INSTEAD of the CPU HPA above, not alongside).
+# Scales workers on the depth of the RUNS JetStream consumer — the most direct
+# signal that execution is falling behind arrival. Requires KEDA.
+#
+# apiVersion: keda.sh/v1alpha1
+# kind: ScaledObject
+# metadata:
+#   name: scheduler-worker-queue
+#   namespace: scheduler
+# spec:
+#   scaleTargetRef:
+#     name: scheduler-worker
+#   minReplicaCount: 1
+#   maxReplicaCount: 50
+#   triggers:
+#     - type: nats-jetstream
+#       metadata:
+#         natsServerMonitoringEndpoint: "nats.scheduler.svc:8222"
+#         stream: "RUNS"
+#         consumer: "scheduler-worker"
+#         lagThreshold: "100"

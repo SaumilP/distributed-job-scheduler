@@ -1,0 +1,54 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      # Pre-pull the images the integration tests start via testcontainers.
+      # Not strictly required -- ubuntu-latest provides Docker and
+      # testcontainers pulls on demand -- but an on-demand pull happens inside
+      # the container start timeout, so a slow registry surfaces as a confusing
+      # test failure rather than an obviously slow pull step.
+      - run: docker pull postgres:17-alpine && docker pull nats:2-alpine
+      # --all-features so the `testing` feature on scheduler-application is
+      # linted too, and --workspace so the gate cannot be narrower than the
+      # workspace. A package-scoped gate previously reported clean while the
+      # workspace was not.
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      # Covers the e2e crate too, and since Phase 2c the three api-* adapter
+      # crates: `members` globs `crates/adapters/*` and `crates/bin/*`, so
+      # --workspace picks up a new crate with no change here. Nothing in this
+      # workflow names a crate, which is what keeps it from drifting the way
+      # the Dockerfile's manifest list did.
+      #
+      # No `protoc` is installed. `api-grpc` compiles its `.proto` with protox,
+      # a pure-Rust compiler, and a fresh clone must build with nothing but a
+      # Rust toolchain. Adding a protobuf install step here would hide a
+      # regression to `tonic_build::compile_protos`, which shells out.
+      - run: cargo test --workspace --locked
+
+  # Separate job: it builds three release binaries in a container, which is
+  # several minutes and has nothing to do with the test gate. Keeping it apart
+  # means a broken Dockerfile does not hide a failing test, and vice versa.
+  #
+  # This job is also the standing check on the no-protoc constraint. The build
+  # runs inside `rust:1.88.0-bookworm`, which ships no protobuf compiler, so a
+  # change that reintroduced a `protoc` dependency fails here regardless of
+  # what happens to be installed on the runner.
+  demo-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the demo image
+        run: docker build -f deploy/Dockerfile -t scheduler-demo .
+      - name: Verify all three binaries are present and runnable
+        run: |
+          for role in scheduler-api scheduler-engine scheduler-worker; do
+            docker run --rm --entrypoint test scheduler-demo -x "/usr/local/bin/$role"
+          done
