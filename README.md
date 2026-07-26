@@ -34,6 +34,18 @@ The rest of this file is the overview all three share.
 
 ---
 
+## Architecture at a glance
+
+<p align="center">
+  <img
+    src="docs/images/DistributedJobScheduler_social_open_graph_v1_1280x640.png"
+    alt="Distributed Job Scheduler in Rust architecture overview showing PostgreSQL job claiming, NATS JetStream dispatch and distributed worker execution"
+    width="100%"
+  />
+</p>
+
+---
+
 ## System context
 
 ![System context diagram](docs/diagrams/c4-context.svg)
