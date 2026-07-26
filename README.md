@@ -1,5 +1,11 @@
 # distributed-job-scheduler
 
+[![CI](https://img.shields.io/github/actions/workflow/status/SaumilP/distributed-job-scheduler/ci.yml?style=flat-square&logo=github&label=ci)](https://github.com/SaumilP/distributed-job-scheduler/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-postgres%20%2B%20nats%2C%20real-2ea44f?style=flat-square)](DEVELOPERS.md#running-the-tests)
+[![Rust](https://img.shields.io/badge/rust-1.88.0-000000?style=flat-square&logo=rust)](rust-toolchain.toml)
+[![Architecture](https://img.shields.io/badge/architecture-argued%2C%20not%20asserted-8957e5?style=flat-square)](ARCHITECTURE.md)
+[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+
 A distributed job scheduler in Rust: you register a job with a schedule, and three cooperating services materialize its runs, claim them without a coordinator, dispatch them over NATS JetStream, and record what happened. The same use cases are exposed over **REST, GraphQL and gRPC**, so the three surfaces can be compared side by side against identical domain logic.
 
 It is a reference implementation for a [blog series](https://www.saumilp.dev/blog/distributed-scheduler-design-the-claim/), written to be read. If you are here to see how `FOR UPDATE SKIP LOCKED` claiming, at-least-once delivery, and hexagonal architecture look in real Rust rather than in a diagram, this is aimed at you. If you are looking for something to run in production, read [Limitations](#limitations) first — the answer is no, and the reasons are the interesting part.
@@ -246,3 +252,12 @@ Its whole dependency set is `thiserror`, `time`, and `uuid`. The ports-and-adapt
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** — the reasoning, decision by decision, with a decision index at the top.
 - **[DEVELOPERS.md](DEVELOPERS.md)** — build it, run it, test it, extend it.
 - **[deploy/README.md](deploy/README.md)** and **[deploy/k8s/README.md](deploy/k8s/README.md)** — ship it.
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** — the gate, the constraints a change has to respect, and which of the gaps above are worth closing.
+
+---
+
+## Contributing
+
+The [Not built](#not-built) list is the backlog: a dead-letter path, cursor pagination on `Job.runs`, a fencing token, batched publishing, an auth adapter. Each was deferred with a reason, so [CONTRIBUTING.md](CONTRIBUTING.md) starts from those reasons rather than from a style guide. Questions about the design belong in [Discussions](https://github.com/SaumilP/distributed-job-scheduler/discussions); reproducible faults in [Issues](https://github.com/SaumilP/distributed-job-scheduler/issues) — though several of the surprising behaviours here are [documented rather than broken](#limitations).
+
+Participation is governed by the [Code of Conduct](CODE_OF_CONDUCT.md). Licensed [MIT](LICENSE).
