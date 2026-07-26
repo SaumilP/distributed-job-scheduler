@@ -2,7 +2,7 @@
 
 A distributed job scheduler in Rust: you register a job with a schedule, and three cooperating services materialize its runs, claim them without a coordinator, dispatch them over NATS JetStream, and record what happened. The same use cases are exposed over **REST, GraphQL and gRPC**, so the three surfaces can be compared side by side against identical domain logic.
 
-It is a reference implementation for a blog series, written to be read. If you are here to see how `FOR UPDATE SKIP LOCKED` claiming, at-least-once delivery, and hexagonal architecture look in real Rust rather than in a diagram, this is aimed at you. If you are looking for something to run in production, read [Limitations](#limitations) first — the answer is no, and the reasons are the interesting part.
+It is a reference implementation for a [blog series](https://www.saumilp.dev/blog/distributed-scheduler-design-the-claim/), written to be read. If you are here to see how `FOR UPDATE SKIP LOCKED` claiming, at-least-once delivery, and hexagonal architecture look in real Rust rather than in a diagram, this is aimed at you. If you are looking for something to run in production, read [Limitations](#limitations) first — the answer is no, and the reasons are the interesting part.
 
 | | |
 |---|---|
